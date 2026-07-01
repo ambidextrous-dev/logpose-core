@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from logpose_core.db.models import CanonicalProvider, ChildcareProvider, SourceRecord
@@ -375,7 +375,7 @@ def attach_to_canonical_provider(db: Session, *, source_provider: ChildcareProvi
         source_provider.canonical_provider_id = canonical.id
         db.flush()
 
-    refresh_canonical_provider(db, canonical=canonical, imported_at=imported_at)
+    canonical = refresh_canonical_provider(db, canonical=canonical, imported_at=imported_at)
     return canonical
 
 
@@ -487,12 +487,12 @@ def create_canonical_provider(db: Session, *, source_provider: ChildcareProvider
     return canonical
 
 
-def refresh_canonical_provider(db: Session, *, canonical: CanonicalProvider, imported_at: datetime) -> None:
+def refresh_canonical_provider(db: Session, *, canonical: CanonicalProvider, imported_at: datetime) -> CanonicalProvider:
     linked_sources = db.scalars(
         select(ChildcareProvider).where(ChildcareProvider.canonical_provider_id == canonical.id)
     ).all()
     if not linked_sources:
-        return
+        return canonical
 
     linked_sources.sort(key=source_sort_key)
     primary = linked_sources[0]
@@ -507,6 +507,20 @@ def refresh_canonical_provider(db: Session, *, canonical: CanonicalProvider, imp
         address_line_1=primary.address_line_1 or primary.full_address,
         city=primary.locality_normalized or primary.locality_raw,
     )
+
+    conflict = db.scalar(
+        select(CanonicalProvider).where(
+            CanonicalProvider.match_key == match_key,
+            CanonicalProvider.id != canonical.id,
+        )
+    )
+    if conflict is not None:
+        for source_provider in linked_sources:
+            source_provider.canonical_provider_id = conflict.id
+        reassign_optional_canonical_references(db, from_id=canonical.id, to_id=conflict.id)
+        db.delete(canonical)
+        db.flush()
+        return refresh_canonical_provider(db, canonical=conflict, imported_at=imported_at)
 
     canonical.match_key = match_key
     canonical.normalized_name = normalized_name
@@ -567,6 +581,25 @@ def refresh_canonical_provider(db: Session, *, canonical: CanonicalProvider, imp
     canonical.imported_at = imported_at
     canonical.updated_at = imported_at
     db.flush()
+    return canonical
+
+
+def reassign_optional_canonical_references(db: Session, *, from_id: uuid.UUID, to_id: uuid.UUID) -> None:
+    table_exists = db.scalar(text("SELECT to_regclass('public.provider_match_candidates') IS NOT NULL"))
+    if not table_exists:
+        return
+
+    db.execute(
+        text(
+            """
+            UPDATE provider_match_candidates
+            SET candidate_canonical_provider_id = :to_id,
+                updated_at = now()
+            WHERE candidate_canonical_provider_id = :from_id
+            """
+        ),
+        {"from_id": from_id, "to_id": to_id},
+    )
 
 
 def source_sort_key(provider: ChildcareProvider) -> tuple[int, str]:
