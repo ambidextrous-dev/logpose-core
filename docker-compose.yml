@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: logpose-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: logpose
+      POSTGRES_USER: logpose
+      POSTGRES_PASSWORD: logpose
+    ports:
+      - "54322:5432"
+    volumes:
+      - logpose_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logpose -d logpose"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  logpose_postgres_data:
