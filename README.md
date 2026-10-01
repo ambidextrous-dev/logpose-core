@@ -1,6 +1,6 @@
-# Logpose Core
+# Littlespot Core
 
-Shared database schema, SQLAlchemy models, search serialization, and provider normalization helpers for Logpose.
+Shared database schema, SQLAlchemy models, search serialization, and provider normalization helpers for Littlespot.
 
 Both sibling runtime projects use this package:
 

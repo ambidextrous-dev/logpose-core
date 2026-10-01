@@ -213,6 +213,16 @@ def build_match_key(
     return identity.standard_name, identity.standard_address, identity.match_key
 
 
+def prefetch_source_records(db: Session, *, source_name: str) -> dict[str, SourceRecord]:
+    """Load every existing SourceRecord for a source into a dict, to avoid a
+    per-record SELECT during a bulk import. Safe for sources with up to the
+    low hundreds of thousands of records; revisit with page-scoped batching
+    well before that if a source ever grows that large.
+    """
+    records = db.scalars(select(SourceRecord).where(SourceRecord.source_name == source_name)).all()
+    return {record.source_record_id: record for record in records}
+
+
 def upsert_source_record(
     db: Session,
     *,
@@ -220,12 +230,17 @@ def upsert_source_record(
     source_name: str,
     source_record_id: str,
     raw_record: dict[str, Any],
+    existing: dict[str, SourceRecord] | None = None,
 ) -> tuple[SourceRecord, str]:
     payload_hash = hash_payload(raw_record)
-    source_record = db.scalar(
-        select(SourceRecord).where(
-            SourceRecord.source_name == source_name,
-            SourceRecord.source_record_id == source_record_id,
+    source_record = (
+        existing.get(source_record_id)
+        if existing is not None
+        else db.scalar(
+            select(SourceRecord).where(
+                SourceRecord.source_name == source_name,
+                SourceRecord.source_record_id == source_record_id,
+            )
         )
     )
 
@@ -239,6 +254,8 @@ def upsert_source_record(
         )
         db.add(source_record)
         db.flush()
+        if existing is not None:
+            existing[source_record_id] = source_record
         return source_record, "created"
 
     source_record.source_import_id = source_import_id
@@ -250,18 +267,32 @@ def upsert_source_record(
     return source_record, "unchanged"
 
 
+def prefetch_source_providers(db: Session, *, source_name: str) -> dict[str, ChildcareProvider]:
+    """Load every existing ChildcareProvider for a source into a dict, to avoid
+    a per-record SELECT during a bulk import. See prefetch_source_records for
+    the same scale caveat.
+    """
+    providers = db.scalars(select(ChildcareProvider).where(ChildcareProvider.source_name == source_name)).all()
+    return {provider.source_facility_id: provider for provider in providers}
+
+
 def upsert_source_provider(
     db: Session,
     *,
     record: NormalizedProviderRecord,
     source_record: SourceRecord,
     imported_at: datetime,
+    existing: dict[str, ChildcareProvider] | None = None,
 ) -> tuple[ChildcareProvider, str]:
     provider_data = build_source_provider_data(record=record, source_record_id=source_record.id, imported_at=imported_at)
-    provider = db.scalar(
-        select(ChildcareProvider).where(
-            ChildcareProvider.source_name == record.source_name,
-            ChildcareProvider.source_facility_id == record.source_facility_id,
+    provider = (
+        existing.get(record.source_facility_id)
+        if existing is not None
+        else db.scalar(
+            select(ChildcareProvider).where(
+                ChildcareProvider.source_name == record.source_name,
+                ChildcareProvider.source_facility_id == record.source_facility_id,
+            )
         )
     )
 
@@ -269,6 +300,8 @@ def upsert_source_provider(
         provider = ChildcareProvider(**provider_data)
         db.add(provider)
         db.flush()
+        if existing is not None:
+            existing[record.source_facility_id] = provider
         return provider, "created"
 
     changed = False
