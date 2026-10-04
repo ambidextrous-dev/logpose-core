@@ -6,12 +6,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg://logpose:logpose@localhost:54322/logpose"
+DEFAULT_DATABASE_URL = "postgresql+pg8000://logpose:logpose@localhost:54322/logpose"
 
 
 def normalize_database_url(database_url: str) -> str:
     if database_url.startswith("postgresql://"):
-        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return database_url.replace("postgresql://", "postgresql+pg8000://", 1)
     return database_url
 
 

@@ -9,7 +9,7 @@ description = "Shared database models and provider helpers for Logpose"
 requires-python = ">=3.12"
 dependencies = [
   "marshmallow>=3.20,<4.0",
-  "psycopg[binary]>=3.2,<4.0",
+  "pg8000",
   "sqlalchemy>=2.0,<3.0",
 ]
 
