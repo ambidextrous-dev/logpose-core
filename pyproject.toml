@@ -13,5 +13,8 @@ dependencies = [
   "sqlalchemy>=2.0,<3.0",
 ]
 
+[project.optional-dependencies]
+psycopg = ["psycopg[binary]>=3.2,<4.0"]
+
 [tool.setuptools.packages.find]
 include = ["logpose_core*"]
