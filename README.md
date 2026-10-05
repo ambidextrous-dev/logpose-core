@@ -1,6 +1,6 @@
-# Littlespot Core
+# TinyLeaps Core
 
-Shared database schema, SQLAlchemy models, search serialization, and provider normalization helpers for Littlespot.
+Shared database schema, SQLAlchemy models, search serialization, and provider normalization helpers for TinyLeaps.
 
 Both sibling runtime projects use this package:
 
